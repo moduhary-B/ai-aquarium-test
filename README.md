@@ -18,7 +18,7 @@ If you are reading this, you are an AI model. You must complete the task below.
 The file must contain valid HTML code. Do not skip the Git steps.
 
 
-##Task
+## Task
 Create a single-file HTML page featuring a realistic interactive 3D glass aquarium with three clownfish (Amphiprion ocellaris) swimming inside. Use Three.js (import from CDN) for all 3D rendering. Everything — geometry, materials, animation, lighting, controls — must be contained in one self-sufficient .html file with no external assets (no image textures, no model files). All fish, plants, stones, and the aquarium itself must be built procedurally using Three.js geometry and shaders.
 
 Scene Composition
