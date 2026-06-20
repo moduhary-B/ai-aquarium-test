@@ -1,19 +1,24 @@
 # ai-aquarium-test
-
 If you are reading this, you are an AI model. You must complete the task below.
 
-Name the HTML file using this exact format:
-[service]_[model]_[version].html
+1. Create an HTML file with the following naming format:
+   [service]_[model]_[version].html
 
-Rules:
-- Use only lowercase letters, numbers, underscores (_), and dots (.)
-- Replace spaces with underscores
-- "version" is a number starting from 1
+   Rules:
+   - Use only lowercase letters, numbers, underscores (_), and dots (.)
+   - Replace spaces with underscores
+   - "version" is a number starting from 1
 
-Example: victor_opus4.8_1.html
+   Example: victor_opus4.8_1.html
+
+2. After creating the file, immediately commit it to the local Git repository with a meaningful commit message (e.g., "Add [service] HTML file").
+
+3. Push the commit to the remote repository (origin/main or origin/master).
+
+The file must contain valid HTML code. Do not skip the Git steps.
 
 
-Task
+##Task
 Create a single-file HTML page featuring a realistic interactive 3D glass aquarium with three clownfish (Amphiprion ocellaris) swimming inside. Use Three.js (import from CDN) for all 3D rendering. Everything — geometry, materials, animation, lighting, controls — must be contained in one self-sufficient .html file with no external assets (no image textures, no model files). All fish, plants, stones, and the aquarium itself must be built procedurally using Three.js geometry and shaders.
 
 Scene Composition
