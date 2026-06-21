@@ -12,21 +12,13 @@
     }
     canvas { display: block; }
   </style>
-  <!-- importmap: tells browser how to resolve bare 'three' specifier used inside addons -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-    }
-  }
-  </script>
 </head>
 <body>
 <script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+// esm.sh rewrites all internal bare-specifier imports automatically
+// so no <script type="importmap"> is needed and this works from any origin
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
 /* ──────────────── Renderer ──────────────── */
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -38,13 +30,10 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
 
-const pmrem = new THREE.PMREMGenerator(renderer);
-const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-pmrem.dispose();
-
 /* ──────────────── Scene / Camera ──────────────── */
 const scene = new THREE.Scene();
-scene.environment = envMap;
+// Deep ocean gradient as background color (CSS gradient shows through via alpha: true)
+scene.background = null;
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(8.5, 5.5, 8.5);
@@ -64,9 +53,9 @@ window.addEventListener('resize', () => {
 });
 
 /* ──────────────── Lighting ──────────────── */
-scene.add(new THREE.AmbientLight(0xb3e5fc, 0.4));
+scene.add(new THREE.AmbientLight(0xb3e5fc, 0.6));
 
-const sun = new THREE.DirectionalLight(0xfff8e1, 1.0);
+const sun = new THREE.DirectionalLight(0xfff8e1, 1.2);
 sun.position.set(5, 10, 5);
 sun.castShadow = true;
 sun.shadow.mapSize.setScalar(2048);
@@ -76,21 +65,26 @@ sun.shadow.camera.left = -8; sun.shadow.camera.right  = 8;
 sun.shadow.camera.top  =  8; sun.shadow.camera.bottom = -2;
 scene.add(sun);
 
-const tankLamp = new THREE.PointLight(0xffe0b2, 0.8, 14);
+const tankLamp = new THREE.PointLight(0xffe0b2, 1.0, 14);
 tankLamp.position.set(0, 4.3, 0);
 scene.add(tankLamp);
 
-const caustic = new THREE.PointLight(0x4fc3f7, 0.3, 10);
+const caustic = new THREE.PointLight(0x4fc3f7, 0.4, 10);
 caustic.position.set(0, 0.4, 0);
 scene.add(caustic);
 
 /* ──────────────── Tank (6 × 3 × 4) ──────────────── */
 const W = 6, D = 3, H = 4, GT = 0.07;
 
+// Glass uses MeshPhysicalMaterial without transmission (no env map needed)
 const glassMat = new THREE.MeshPhysicalMaterial({
-  color: 0xe0f7fa, transmission: 0.95, roughness: 0.05,
-  thickness: 0.15, ior: 1.5, transparent: true, opacity: 0.18,
-  side: THREE.DoubleSide, envMapIntensity: 1.5,
+  color: 0xd0f0ff,
+  roughness: 0.05,
+  metalness: 0.0,
+  transparent: true,
+  opacity: 0.22,
+  side: THREE.DoubleSide,
+  depthWrite: false,
 });
 
 function addBox(w, h, d, x, y, z, mat) {
@@ -118,12 +112,12 @@ addBox(W+0.5, 0.1, D+0.5, 0, -0.05, 0,
 
 /* ──────────────── Water ──────────────── */
 addBox(W-0.14, H-0.08, D-0.14, 0, H/2, 0,
-  new THREE.MeshPhongMaterial({ color:0x1565C0, transparent:true, opacity:0.08, side:THREE.BackSide }));
+  new THREE.MeshPhongMaterial({ color:0x1565C0, transparent:true, opacity:0.12, side:THREE.BackSide }));
 
 const surfGeo = new THREE.PlaneGeometry(W-0.14, D-0.14, 24, 24);
 surfGeo.rotateX(-Math.PI / 2);
 const waterSurf = new THREE.Mesh(surfGeo, new THREE.MeshPhongMaterial({
-  color: 0x29b6f6, transparent: true, opacity: 0.20, side: THREE.DoubleSide,
+  color: 0x29b6f6, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
 }));
 waterSurf.position.set(0, H - 0.05, 0);
 scene.add(waterSurf);
@@ -217,7 +211,7 @@ function buildFish(sc) {
   }
   bGeo.setAttribute('color', new THREE.BufferAttribute(vc, 3));
   bGeo.applyMatrix4(new THREE.Matrix4().makeScale(1, 0.62, 1.85));
-  root.add(new THREE.Mesh(bGeo, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70 })));
+  root.add(new THREE.Mesh(bGeo, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 80 })));
 
   for (const sx of [-1, 1]) {
     const eg = new THREE.Group();
@@ -317,9 +311,8 @@ const bSrcs = [
   new THREE.Vector3( 1.8, 0.08,  0.7),
 ];
 let nextBubble = 0;
-const bMatBase = new THREE.MeshPhysicalMaterial({
-  color: 0xaaddff, transmission: 0.9, roughness: 0.0, thickness: 0.04,
-  transparent: true, opacity: 0.35, ior: 1.33,
+const bMatBase = new THREE.MeshPhongMaterial({
+  color: 0xaaddff, transparent: true, opacity: 0.4, shininess: 200,
 });
 
 function spawnBubble(src) {
