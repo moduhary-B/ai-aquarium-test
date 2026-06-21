@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Aquarium — Clownfish Tank</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: linear-gradient(180deg, #0a1628 0%, #1a3a5c 100%);
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'https://unpkg.com/three@0.160.0/examples/jsm/environments/RoomEnvironment.js';
+
+/* ──────────────── Renderer ──────────────── */
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
+
+/* ──────────────── Scene / Camera ──────────────── */
+const scene = new THREE.Scene();
+scene.environment = envMap;
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(8.5, 5.5, 8.5);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, 0);
+controls.minDistance = 3.5;
+controls.maxDistance = 22;
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.update();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* ──────────────── Lighting ──────────────── */
+scene.add(new THREE.AmbientLight(0xb3e5fc, 0.4));
+
+const sun = new THREE.DirectionalLight(0xfff8e1, 1.0);
+sun.position.set(5, 10, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.setScalar(2048);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far  = 30;
+sun.shadow.camera.left = -8; sun.shadow.camera.right  = 8;
+sun.shadow.camera.top  =  8; sun.shadow.camera.bottom = -2;
+scene.add(sun);
+
+const tankLamp = new THREE.PointLight(0xffe0b2, 0.8, 14);
+tankLamp.position.set(0, 4.3, 0);
+scene.add(tankLamp);
+
+const caustic = new THREE.PointLight(0x4fc3f7, 0.3, 10);
+caustic.position.set(0, 0.4, 0);
+scene.add(caustic);
+
+/* ──────────────── Tank (6 × 3 × 4) ──────────────── */
+const W = 6, D = 3, H = 4, GT = 0.07;
+
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: 0xe0f7fa, transmission: 0.95, roughness: 0.05,
+  thickness: 0.15, ior: 1.5, transparent: true, opacity: 0.18,
+  side: THREE.DoubleSide, envMapIntensity: 1.5,
+});
+
+function addBox(w, h, d, x, y, z, mat) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  scene.add(m);
+  return m;
+}
+
+/* Glass panels */
+addBox(W,  H,  GT,  0,   H/2, -D/2, glassMat); // front
+addBox(W,  H,  GT,  0,   H/2,  D/2, glassMat); // back
+addBox(GT, H,  D,  -W/2, H/2,  0,   glassMat); // left
+addBox(GT, H,  D,   W/2, H/2,  0,   glassMat); // right
+addBox(W,  GT, D,   0,   0,    0,   glassMat); // bottom
+
+/* Black rim */
+const rimMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+const RH = 0.07;
+addBox(W+0.14, RH, RH,  0,   H+RH/2, -D/2, rimMat);
+addBox(W+0.14, RH, RH,  0,   H+RH/2,  D/2, rimMat);
+addBox(RH, RH, D+0.14, -W/2, H+RH/2,  0,   rimMat);
+addBox(RH, RH, D+0.14,  W/2, H+RH/2,  0,   rimMat);
+
+/* Stand */
+addBox(W+0.5, 0.1, D+0.5, 0, -0.05, 0,
+  new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 }));
+
+/* ──────────────── Water ──────────────── */
+addBox(W-0.14, H-0.08, D-0.14, 0, H/2, 0,
+  new THREE.MeshPhongMaterial({ color:0x1565C0, transparent:true, opacity:0.08, side:THREE.BackSide }));
+
+const SSEGS = 24;
+const surfGeo = new THREE.PlaneGeometry(W-0.14, D-0.14, SSEGS, SSEGS);
+surfGeo.rotateX(-Math.PI / 2);
+const waterSurf = new THREE.Mesh(surfGeo, new THREE.MeshPhongMaterial({
+  color: 0x29b6f6, transparent: true, opacity: 0.20, side: THREE.DoubleSide,
+}));
+waterSurf.position.set(0, H - 0.05, 0);
+scene.add(waterSurf);
+
+/* Sandy floor */
+const sandFloor = new THREE.Mesh(
+  new THREE.PlaneGeometry(W-0.14, D-0.14),
+  new THREE.MeshStandardMaterial({ color: 0x8D7A5C, roughness: 0.95 })
+);
+sandFloor.rotation.x = -Math.PI / 2;
+sandFloor.position.y = 0.04;
+sandFloor.receiveShadow = true;
+scene.add(sandFloor);
+
+/* ──────────────── Gravel ──────────────── */
+const grPalette = [0x8D6E63, 0xA1887F, 0x9E9E9E, 0x6D4C41, 0xBCAAA4, 0x78909C];
+for (let i = 0; i < 28; i++) {
+  const r = 0.04 + Math.random() * 0.12;
+  const geo = Math.random() > 0.45
+    ? new THREE.SphereGeometry(r, 7, 5)
+    : new THREE.DodecahedronGeometry(r, 0);
+  const stone = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: grPalette[~~(Math.random() * grPalette.length)], roughness: 0.9,
+  }));
+  stone.position.set(
+    (Math.random()-0.5)*(W-0.7),
+    r * 0.35,
+    (Math.random()-0.5)*(D-0.7)
+  );
+  stone.scale.y = 0.35 + Math.random()*0.45;
+  stone.rotation.set(Math.random()*2, Math.random()*6, Math.random()*2);
+  stone.castShadow = true; stone.receiveShadow = true;
+  scene.add(stone);
+}
+
+/* ──────────────── Plants ──────────────── */
+const blades = [];
+const gPalette = [0x2E7D32, 0x388E3C, 0x1B5E20, 0x4CAF50, 0x66BB6A];
+
+function addPlant(cx, cz) {
+  const grp = new THREE.Group();
+  const n = 5 + ~~(Math.random() * 5);
+  for (let i = 0; i < n; i++) {
+    const bh = 0.7 + Math.random()*1.5;
+    const bw = 0.06 + Math.random()*0.09;
+    const sh = new THREE.Shape();
+    sh.moveTo(-bw/2, 0);
+    sh.bezierCurveTo(-bw*.6, bh*.35, -bw*.9, bh*.65, 0, bh);
+    sh.bezierCurveTo( bw*.9, bh*.65,  bw*.6, bh*.35, bw/2, 0);
+    sh.lineTo(-bw/2, 0);
+    const blade = new THREE.Mesh(
+      new THREE.ShapeGeometry(sh, 10),
+      new THREE.MeshPhongMaterial({
+        color: gPalette[~~(Math.random()*5)],
+        side: THREE.DoubleSide, transparent: true, opacity: 0.88,
+      })
+    );
+    blade.position.set((Math.random()-0.5)*0.35, 0, (Math.random()-0.5)*0.35);
+    blade.rotation.y = Math.random()*Math.PI*2;
+    grp.add(blade);
+    blades.push({ mesh: blade, phase: Math.random()*Math.PI*2, freq: 0.6+Math.random()*0.7, amp: 0.06+Math.random()*0.08 });
+  }
+  grp.position.set(cx, 0.08, cz);
+  scene.add(grp);
+}
+
+[[-2.4,-1.1],[-2.4,1.1],[2.4,-1.1],[2.4,1.1],[0.5,1.1],[-1.1,-1.1]].forEach(([x,z]) => addPlant(x,z));
+
+/* ──────────────── Fish Builder ──────────────── */
+function buildFish(sc) {
+  const root = new THREE.Group();
+
+  /* Body — vertex-colored elongated sphere (nose = +Z) */
+  const bGeo = new THREE.SphereGeometry(0.28, 32, 24);
+  const pa = bGeo.attributes.position;
+  const vc = new Float32Array(pa.count * 3);
+
+  const bands = [
+    { z: 0.14,  hw: 0.042 },
+    { z: -0.02, hw: 0.051 },
+    { z: -0.18, hw: 0.041 },
+  ];
+  for (let i = 0; i < pa.count; i++) {
+    const z = pa.getZ(i), y = pa.getY(i);
+    let r = 1, g = 0.427, b = 0;
+    if (y < -0.12) { g = 0.52; b = 0.08; }
+    for (const bd of bands) {
+      const d = Math.abs(z - bd.z);
+      if (d < bd.hw)         { r=1; g=1; b=1;         break; }
+      if (d < bd.hw + 0.015) { r=0.07; g=0.07; b=0.07; break; }
+    }
+    vc[i*3]=r; vc[i*3+1]=g; vc[i*3+2]=b;
+  }
+  bGeo.setAttribute('color', new THREE.BufferAttribute(vc, 3));
+  bGeo.applyMatrix4(new THREE.Matrix4().makeScale(1, 0.62, 1.85));
+  root.add(new THREE.Mesh(bGeo, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 70 })));
+
+  /* Eyes */
+  for (const sx of [-1, 1]) {
+    const eg = new THREE.Group();
+    eg.add(new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 10),
+      new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 120 })));
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.036, 8, 8),
+      new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 200 }));
+    pupil.position.z = 0.043;
+    eg.add(pupil);
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6),
+      new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0xffffff }));
+    glint.position.set(0.02, 0.022, 0.058);
+    eg.add(glint);
+    eg.position.set(sx*0.20, 0.06, 0.38);
+    eg.rotation.y = sx * 0.4;
+    root.add(eg);
+  }
+
+  const finMat = new THREE.MeshPhongMaterial({
+    color: 0xFF6D00, side: THREE.DoubleSide, transparent: true, opacity: 0.82, shininess: 40,
+  });
+
+  /* Tail fin — two lobes rotated into YZ-plane; Y-rotation = left-right wag */
+  const tailPivot = new THREE.Group();
+  tailPivot.position.z = -0.45;
+  for (const sy of [-1, 1]) {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0);
+    sh.bezierCurveTo(0.02, sy*0.08, -0.04, sy*0.14, -0.06, sy*0.21);
+    sh.bezierCurveTo(-0.04, sy*0.27, 0.04, sy*0.28, 0.09, sy*0.22);
+    sh.bezierCurveTo(0.08,  sy*0.13, 0.03, sy*0.05, 0, 0);
+    const fin = new THREE.Mesh(new THREE.ShapeGeometry(sh, 8), finMat);
+    fin.rotation.y = -Math.PI/2;
+    tailPivot.add(fin);
+  }
+  root.add(tailPivot);
+
+  /* Dorsal fin */
+  {
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.38, 0); sh.quadraticCurveTo(-0.1, 0.15, 0.05, 0.17);
+    sh.quadraticCurveTo(0.2, 0.14, 0.38, 0.02);
+    sh.lineTo(0.38, 0); sh.lineTo(-0.38, 0);
+    const fin = new THREE.Mesh(new THREE.ShapeGeometry(sh, 8), finMat);
+    fin.rotation.x = Math.PI/2;
+    fin.position.set(0, 0.22, -0.05);
+    root.add(fin);
+  }
+
+  /* Pectoral fins */
+  for (const sx of [-1, 1]) {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0); sh.quadraticCurveTo(sx*0.05, 0.10, 0, 0.17);
+    sh.quadraticCurveTo(-sx*0.09, 0.09, 0, 0);
+    const fin = new THREE.Mesh(new THREE.ShapeGeometry(sh, 6), finMat);
+    fin.position.set(sx*0.27, -0.02, 0.1);
+    fin.rotation.set(0.1, sx*0.45, sx*0.25);
+    root.add(fin);
+  }
+
+  /* Anal fin */
+  {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0); sh.lineTo(-0.09, -0.14); sh.lineTo(0.07, -0.12); sh.lineTo(0, 0);
+    const fin = new THREE.Mesh(new THREE.ShapeGeometry(sh, 4), finMat);
+    fin.rotation.x = Math.PI/2;
+    fin.position.set(0, -0.20, -0.1);
+    root.add(fin);
+  }
+
+  root.scale.setScalar(sc);
+  return { root, tailPivot };
+}
+
+/* ──────────────── Fish Instances ──────────────── */
+const BND = {
+  x: [-W/2 + 0.65, W/2 - 0.65],
+  y: [0.4,         H   - 0.4 ],
+  z: [-D/2 + 0.65, D/2 - 0.65],
+};
+
+function rndBnd() {
+  return new THREE.Vector3(
+    THREE.MathUtils.randFloat(BND.x[0], BND.x[1]),
+    THREE.MathUtils.randFloat(BND.y[0], BND.y[1]),
+    THREE.MathUtils.randFloat(BND.z[0], BND.z[1]),
+  );
+}
+
+const fish = [0.9, 1.0, 1.1].map((sc, i) => {
+  const { root, tailPivot } = buildFish(sc);
+  root.position.set((i-1)*1.5, 1.5 + i*0.5, (i-0.5)*0.5);
+  scene.add(root);
+  return { root, tailPivot, target: rndBnd(), speed: 0.006 + i*0.002, tailPhase: i*2.2 };
+});
+
+/* ──────────────── Bubbles ──────────────── */
+const bubbles = [];
+const bSrcs = [
+  new THREE.Vector3(-2.0, 0.08, -0.9),
+  new THREE.Vector3( 1.8, 0.08,  0.7),
+];
+let nextBubble = 0;
+const bMatBase = new THREE.MeshPhysicalMaterial({
+  color: 0xaaddff, transmission: 0.9, roughness: 0.0, thickness: 0.04,
+  transparent: true, opacity: 0.35, ior: 1.33,
+});
+
+function spawnBubble(src) {
+  const r = 0.018 + Math.random()*0.025;
+  const b = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), bMatBase.clone());
+  b.position.set(
+    src.x + (Math.random()-0.5)*0.1, src.y,
+    src.z + (Math.random()-0.5)*0.1
+  );
+  b.userData = { spd: 0.007+Math.random()*0.006, wob: Math.random()*Math.PI*2, initR: r };
+  scene.add(b);
+  bubbles.push(b);
+}
+
+/* ──────────────── Animation Loop ──────────────── */
+const clock = new THREE.Clock();
+const _v  = new THREE.Vector3();
+const _m  = new THREE.Matrix4();
+const _q  = new THREE.Quaternion();
+const UP  = new THREE.Vector3(0, 1, 0);
+
+function tick() {
+  requestAnimationFrame(tick);
+  controls.update();
+  const t = clock.getElapsedTime();
+
+  /* Water surface ripple */
+  const sp = waterSurf.geometry.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    const x = sp.getX(i), z = sp.getZ(i);
+    sp.setY(i, Math.sin(x*2.8+t*1.4)*0.022 + Math.cos(z*3.5+t*1.1)*0.016);
+  }
+  sp.needsUpdate = true;
+  waterSurf.geometry.computeVertexNormals();
+
+  /* Plant sway */
+  for (const b of blades) {
+    b.mesh.rotation.z = Math.sin(t*b.freq + b.phase) * b.amp;
+  }
+
+  /* Bubbles */
+  if (t > nextBubble) {
+    for (const s of bSrcs) if (Math.random() > 0.4) spawnBubble(s);
+    nextBubble = t + 0.25 + Math.random()*0.2;
+  }
+  for (let i = bubbles.length-1; i >= 0; i--) {
+    const b = bubbles[i], d = b.userData;
+    b.position.y += d.spd;
+    b.position.x += Math.sin(t*2.3 + d.wob)*0.003;
+    b.position.z += Math.cos(t*1.9 + d.wob)*0.003;
+    const prog = (b.position.y - 0.08) / (H - 0.16);
+    b.scale.setScalar(Math.max(0.01, 1 - prog*0.3));
+    if (b.position.y >= H - 0.08) {
+      scene.remove(b); b.geometry.dispose(); bubbles.splice(i, 1);
+    }
+  }
+
+  /* Fish AI */
+  for (const f of fish) {
+    const pos = f.root.position;
+    _v.subVectors(f.target, pos);
+    let len = _v.length();
+
+    if (len < 0.25) {
+      f.target = rndBnd();
+      _v.subVectors(f.target, pos);
+      len = _v.length();
+    }
+
+    if (pos.x <= BND.x[0]+0.1 || pos.x >= BND.x[1]-0.1 ||
+        pos.y <= BND.y[0]+0.1 || pos.y >= BND.y[1]-0.1 ||
+        pos.z <= BND.z[0]+0.1 || pos.z >= BND.z[1]-0.1) {
+      f.target = rndBnd();
+      _v.subVectors(f.target, pos);
+      len = _v.length();
+    }
+
+    if (len > 0.001) {
+      _v.divideScalar(len);
+
+      pos.addScaledVector(_v, f.speed);
+      pos.x = THREE.MathUtils.clamp(pos.x, BND.x[0], BND.x[1]);
+      pos.y = THREE.MathUtils.clamp(pos.y, BND.y[0], BND.y[1]);
+      pos.z = THREE.MathUtils.clamp(pos.z, BND.z[0], BND.z[1]);
+
+      _m.lookAt(_v.clone().add(pos), pos, UP);
+      _q.setFromRotationMatrix(_m);
+      f.root.quaternion.slerp(_q, 0.04);
+    }
+
+    f.tailPhase += f.speed * 52;
+    f.tailPivot.rotation.y = Math.sin(f.tailPhase) * 0.40;
+  }
+
+  caustic.intensity = 0.25 + 0.08 * Math.sin(t*2.3) * Math.cos(t*1.7);
+
+  renderer.render(scene, camera);
+}
+
+tick();
+</script>
+</body>
+</html>
